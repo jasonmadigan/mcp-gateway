@@ -21,7 +21,7 @@ keycloak-install-impl: $(HELM)
 		--set postgresql.auth.postgresPassword=postgres \
 		--set postgresql.auth.database=keycloak \
 		--set replicaCount=1 \
-		--wait --timeout=300s
+		--wait --timeout=600s
 	@echo ""
 	@echo "Keycloak installed!"
 	@echo "Admin credentials: $(KEYCLOAK_ADMIN_USER) / $(KEYCLOAK_ADMIN_PASSWORD)"
