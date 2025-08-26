@@ -14,7 +14,8 @@ help: ## Display this help
 
 .PHONY: build clean mcp-broker-router
 
-
+# Default build target
+build: mcp-broker-router
 
 # Build the broker and router 
 mcp-broker-router:

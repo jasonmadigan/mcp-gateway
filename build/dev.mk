@@ -18,8 +18,7 @@ dev-broker-service: # Create service pointing to local MCP broker
 dev-setup: dev-envoyfilter dev-broker-service # Configure cluster to use local services
 	@echo "Cluster configured for local development!"
 	@echo "Now run:"
-	@echo "  make run-router   # In one terminal"
-	@echo "  make run-broker   # In another terminal"
+	@echo "  make run-mcp-broker-router   # Run the combined broker/router"
 
 # Reset to in-cluster configuration
 .PHONY: dev-reset
@@ -59,8 +58,7 @@ dev-stop-forward: # Stop any kubectl port-forward processes
 
 # Stop all local development processes
 .PHONY: dev-stop
-dev-stop: dev-stop-forward # Stop all local dev processes (port-forwards, router, broker)
-	@echo "Stopping local mcp-router and mcp-broker..."
-	-pkill -f "mcp-router" || true
-	-pkill -f "mcp-broker" || true
+dev-stop: dev-stop-forward # Stop all local dev processes (port-forwards, broker-router)
+	@echo "Stopping local mcp-broker-router..."
+	-pkill -f "mcp-broker-router" || true
 	@echo "All local development processes stopped"

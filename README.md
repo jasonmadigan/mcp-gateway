@@ -9,10 +9,9 @@ An Envoy-based MCP Gateway
 make local-env-setup    # Create a Kind cluster with Istio, Gateway API, MetalLB, Keycloak, and Kuadrant
 
 # Local Development (Note: MCP implementation is incomplete - expect 500 errors)
-make dev                # Configure cluster to use local services
-make run-router         # Run router locally (ext_proc on port 50051, debug HTTP on port 9002)
-make run-broker         # Run broker locally (port 8080)
-make dev-gateway-forward # Forward gateway to localhost:8888
+make dev                    # Configure cluster to use local services
+make run-mcp-broker-router  # Run combined broker/router (broker on :8080, ext_proc on :50051)
+make dev-gateway-forward    # Forward gateway to localhost:8888
 
 # Inspection
 make urls               # Show all service URLs

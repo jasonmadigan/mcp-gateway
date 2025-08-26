@@ -11,18 +11,16 @@ info-impl:
 	@echo ""
 	@echo "Service URLs:"
 	@echo "  Gateway:     http://localhost:8888 (run: make dev-gateway-forward)"
-	@echo "  Broker:      http://localhost:8080 (run: make run-broker)"
-	@echo "  Router:      grpc://localhost:9002 (run: make run-router)"
+	@echo "  Broker/Router: http://localhost:8080 & grpc://localhost:50051 (run: make run-mcp-broker-router)"
 	@echo "  Mock MCP:    http://localhost:8081/mcp (run: kubectl port-forward -n mcp-server svc/mcp-test 8081:8081)"
 	@if kubectl get svc -n keycloak keycloak >/dev/null 2>&1; then \
-		echo "  Keycloak:    http://localhost:8090 (run: make keycloak-forward)"; \
+		echo "  Keycloak:    http://localhost:8095 (run: make keycloak-forward)"; \
 		echo "               Admin: admin / admin"; \
 	fi
 	@echo ""
 	@echo "Quick Start Commands:"
 	@echo "  make dev                 # Configure for local development"
-	@echo "  make run-router          # Start router locally"
-	@echo "  make run-broker          # Start broker locally"
+	@echo "  make run-mcp-broker-router # Start broker/router locally"
 	@echo "  make dev-gateway-forward # Access gateway"
 	@echo "  make logs                # Tail gateway logs"
 	@echo ""
@@ -51,8 +49,7 @@ setup-complete:
 	@echo "Next steps:"
 	@echo "  1. Configure for local development: make dev"
 	@echo "  2. Start services in separate terminals:"
-	@echo "     - make run-router"
-	@echo "     - make run-broker"
+	@echo "     - make run-mcp-broker-router"
 	@echo "     - make dev-gateway-forward"
 	@echo ""
 	@echo "Run 'make info' anytime to see this information again."
