@@ -66,9 +66,48 @@ type TargetReference struct {
 // It contains conditions that indicate whether the referenced servers have been
 // successfully discovered and are ready for use.
 type MCPServerStatus struct {
+	// ObservedGeneration reflects the generation of the most recently observed MCPServer
+	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
+
 	// Conditions represent the latest available observations of the MCPServer's state.
-	// Common conditions include 'Ready' to indicate if all referenced servers are accessible.
+	// Types include: Ready, ServersDiscovered, ConfigMapUpdated
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
+
+	// TotalServers is the total number of servers discovered
+	TotalServers int `json:"totalServers,omitempty"`
+
+	// TotalTools is the total number of tools discovered across all servers
+	TotalTools int `json:"totalTools,omitempty"`
+
+	// DiscoveredServers contains detailed information about each discovered server
+	DiscoveredServers []DiscoveredServer `json:"discoveredServers,omitempty"`
+}
+
+// DiscoveredServer represents a discovered MCP server with its tools
+type DiscoveredServer struct {
+	// Name of the server (from HTTPRoute reference)
+	Name string `json:"name"`
+
+	// URL of the MCP server endpoint
+	URL string `json:"url"`
+
+	// ToolPrefix applied to this server's tools
+	ToolPrefix string `json:"toolPrefix,omitempty"`
+
+	// Ready indicates if this server is ready
+	Ready bool `json:"ready"`
+
+	// ToolCount is the number of tools discovered
+	ToolCount int `json:"toolCount,omitempty"`
+
+	// Tools lists the discovered tool names (without prefix)
+	Tools []string `json:"tools,omitempty"`
+
+	// LastProbeTime is when this server was last probed
+	LastProbeTime *metav1.Time `json:"lastProbeTime,omitempty"`
+
+	// Message provides additional information about the server status
+	Message string `json:"message,omitempty"`
 }
 
 // +kubebuilder:object:root=true

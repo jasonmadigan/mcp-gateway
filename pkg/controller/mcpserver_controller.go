@@ -35,6 +35,10 @@ type ServerInfo struct {
 	ToolPrefix         string
 	HTTPRouteName      string
 	HTTPRouteNamespace string
+	// Discovery results
+	Tools        []string
+	Ready        bool
+	ErrorMessage string
 }
 
 // MCPServerReconciler reconciles MCPServer resources
@@ -72,10 +76,32 @@ func (r *MCPServerReconciler) Reconcile(
 	serverInfos, err := r.discoverServersFromHTTPRoutes(ctx, mcpServer)
 	if err != nil {
 		log.Error(err, "Failed to discover servers from HTTPRoutes")
-		return reconcile.Result{}, r.updateStatus(ctx, mcpServer, false, err.Error())
+		return reconcile.Result{}, r.updateStatus(ctx, mcpServer, false, err.Error(), nil)
 	}
 
-	if err := r.updateStatus(ctx, mcpServer, true, fmt.Sprintf("MCPServer successfully reconciled with %d servers", len(serverInfos))); err != nil {
+	// Discover tools from each server
+	// TODO: Enable actual discovery once we figure out the correct MCP API
+	for i := range serverInfos {
+		// r.discoverServerTools(ctx, &serverInfos[i])
+		// For now, just mark as not ready with a message
+		serverInfos[i].Ready = false
+		serverInfos[i].ErrorMessage = "Tool discovery not yet implemented"
+		serverInfos[i].Tools = []string{}
+	}
+
+	// Check if all servers are ready
+	allReady := true
+	readyCount := 0
+	for _, info := range serverInfos {
+		if info.Ready {
+			readyCount++
+		} else {
+			allReady = false
+		}
+	}
+
+	message := fmt.Sprintf("Discovered %d/%d servers successfully", readyCount, len(serverInfos))
+	if err := r.updateStatus(ctx, mcpServer, allReady, message, serverInfos); err != nil {
 		log.Error(err, "Failed to update status")
 		return reconcile.Result{}, err
 	}
@@ -305,12 +331,26 @@ func (r *MCPServerReconciler) discoverServersFromHTTPRoutes(
 	return serverInfos, nil
 }
 
+// discoverServerTools connects to an MCP server and discovers its tools
+// TODO: Implement actual discovery using the MCP client
+func (r *MCPServerReconciler) discoverServerTools(ctx context.Context, serverInfo *ServerInfo) {
+	// Placeholder - actual discovery disabled for now due to API issues
+	serverInfo.Ready = false
+	serverInfo.ErrorMessage = "Tool discovery not yet implemented"
+	serverInfo.Tools = []string{}
+}
+
 func (r *MCPServerReconciler) updateStatus(
 	ctx context.Context,
 	mcpServer *mcpv1alpha1.MCPServer,
 	ready bool,
 	message string,
+	serverInfos []ServerInfo,
 ) error {
+	// Update observed generation
+	mcpServer.Status.ObservedGeneration = mcpServer.Generation
+	
+	// Update Ready condition
 	condition := metav1.Condition{
 		Type:               "Ready",
 		Status:             metav1.ConditionFalse,
@@ -335,6 +375,37 @@ func (r *MCPServerReconciler) updateStatus(
 	if !found {
 		mcpServer.Status.Conditions = append(mcpServer.Status.Conditions, condition)
 	}
+
+	// Update discovered servers
+	discoveredServers := make([]mcpv1alpha1.DiscoveredServer, 0, len(serverInfos))
+	totalTools := 0
+	totalServers := len(serverInfos)
+	
+	for _, info := range serverInfos {
+		now := metav1.Now()
+		ds := mcpv1alpha1.DiscoveredServer{
+			Name:          info.HTTPRouteName,
+			URL:           info.Endpoint,
+			ToolPrefix:    info.ToolPrefix,
+			Ready:         info.Ready,
+			ToolCount:     len(info.Tools),
+			Tools:         info.Tools,
+			LastProbeTime: &now,
+		}
+		
+		if info.ErrorMessage != "" {
+			ds.Message = info.ErrorMessage
+		} else if info.Ready {
+			ds.Message = fmt.Sprintf("Discovered %d tools", len(info.Tools))
+		}
+		
+		discoveredServers = append(discoveredServers, ds)
+		totalTools += len(info.Tools)
+	}
+	
+	mcpServer.Status.DiscoveredServers = discoveredServers
+	mcpServer.Status.TotalServers = totalServers
+	mcpServer.Status.TotalTools = totalTools
 
 	return r.Status().Update(ctx, mcpServer)
 }

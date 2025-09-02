@@ -84,4 +84,25 @@ func (in *MCPServerStatus) DeepCopyInto(out *MCPServerStatus) {
 			(*in)[i].DeepCopyInto(&(*out)[i])
 		}
 	}
+	if in.DiscoveredServers != nil {
+		in, out := &in.DiscoveredServers, &out.DiscoveredServers
+		*out = make([]DiscoveredServer, len(*in))
+		for i := range *in {
+			(*in)[i].DeepCopyInto(&(*out)[i])
+		}
+	}
+}
+
+// DeepCopyInto copies the receiver, writing into out. in must be non-nil.
+func (in *DiscoveredServer) DeepCopyInto(out *DiscoveredServer) {
+	*out = *in
+	if in.Tools != nil {
+		in, out := &in.Tools, &out.Tools
+		*out = make([]string, len(*in))
+		copy(*out, *in)
+	}
+	if in.LastProbeTime != nil {
+		in, out := &in.LastProbeTime, &out.LastProbeTime
+		*out = (*in).DeepCopy()
+	}
 }

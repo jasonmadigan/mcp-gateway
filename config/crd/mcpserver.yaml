@@ -107,3 +107,50 @@ spec:
                     lastTransitionTime:
                       type: string
                       format: date-time
+              observedGeneration:
+                type: integer
+                format: int64
+                description: ObservedGeneration reflects the generation of the most recently observed MCPServer
+              totalServers:
+                type: integer
+                description: Total number of servers discovered
+              totalTools:
+                type: integer
+                description: Total number of tools discovered across all servers
+              discoveredServers:
+                type: array
+                description: Detailed information about each discovered server
+                items:
+                  type: object
+                  required:
+                  - name
+                  - url
+                  - ready
+                  properties:
+                    name:
+                      type: string
+                      description: Name of the server (from HTTPRoute reference)
+                    url:
+                      type: string
+                      description: URL of the MCP server endpoint
+                    toolPrefix:
+                      type: string
+                      description: Tool prefix applied to this server's tools
+                    ready:
+                      type: boolean
+                      description: Indicates if this server is ready
+                    toolCount:
+                      type: integer
+                      description: Number of tools discovered
+                    tools:
+                      type: array
+                      description: List of discovered tool names (without prefix)
+                      items:
+                        type: string
+                    lastProbeTime:
+                      type: string
+                      format: date-time
+                      description: When this server was last probed
+                    message:
+                      type: string
+                      description: Additional information about the server status
