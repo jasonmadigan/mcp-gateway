@@ -13,6 +13,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
@@ -414,5 +415,50 @@ func (r *MCPServerReconciler) updateStatus(
 func (r *MCPServerReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&mcpv1alpha1.MCPServer{}).
+		Watches(
+			&gatewayv1.HTTPRoute{},
+			handler.EnqueueRequestsFromMapFunc(r.findMCPServersForHTTPRoute),
+		).
 		Complete(r)
+}
+
+// findMCPServersForHTTPRoute finds all MCPServers that reference the given HTTPRoute
+func (r *MCPServerReconciler) findMCPServersForHTTPRoute(ctx context.Context, obj client.Object) []reconcile.Request {
+	httpRoute := obj.(*gatewayv1.HTTPRoute)
+	log := log.FromContext(ctx).WithValues("HTTPRoute", httpRoute.Name, "namespace", httpRoute.Namespace)
+
+	// List all MCPServers
+	mcpServerList := &mcpv1alpha1.MCPServerList{}
+	if err := r.List(ctx, mcpServerList); err != nil {
+		log.Error(err, "Failed to list MCPServers")
+		return nil
+	}
+
+	var requests []reconcile.Request
+	for _, mcpServer := range mcpServerList.Items {
+		// Check if this MCPServer references the HTTPRoute
+		for _, targetRef := range mcpServer.Spec.TargetRefs {
+			if targetRef.Kind == "HTTPRoute" && targetRef.Name == httpRoute.Name {
+				// Check namespace match (default to MCPServer namespace if not specified)
+				targetNamespace := targetRef.Namespace
+				if targetNamespace == "" {
+					targetNamespace = mcpServer.Namespace
+				}
+				if targetNamespace == httpRoute.Namespace {
+					log.Info("Found MCPServer referencing HTTPRoute", 
+						"MCPServer", mcpServer.Name, 
+						"MCPServerNamespace", mcpServer.Namespace)
+					requests = append(requests, reconcile.Request{
+						NamespacedName: types.NamespacedName{
+							Name:      mcpServer.Name,
+							Namespace: mcpServer.Namespace,
+						},
+					})
+					break // No need to check other targetRefs for this MCPServer
+				}
+			}
+		}
+	}
+
+	return requests
 }
