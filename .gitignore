@@ -49,3 +49,6 @@ docs/plans/
 catalog/mcp-gateway-catalog/
 catalog/mcp-gateway-catalog.Dockerfile
 tests/perf/mock-server/mock-server
+
+# Brainstorming companion
+.superpowers/
