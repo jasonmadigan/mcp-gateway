@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1782947992562,
+  "lastUpdate": 1782947994269,
   "repoUrl": "https://github.com/jasonmadigan/mcp-gateway",
   "entries": {
     "MCP Gateway Performance": [
@@ -224,6 +224,53 @@ window.BENCHMARK_DATA = {
           {
             "name": "avg_tool_call_ms",
             "value": 4.580821917808219,
+            "unit": "ms"
+          },
+          {
+            "name": "tool_error_rate",
+            "value": 0,
+            "unit": "percent"
+          },
+          {
+            "name": "session_fail_rate",
+            "value": 0,
+            "unit": "percent"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Patryk Stefanski",
+            "username": "Patryk-Stefanski",
+            "email": "pstefans@redhat.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "963b9dae2f0035e6bd3b356da9764b9f0900fdc0",
+          "message": "Merge pull request #1216 from Kuadrant/deps/k8s-v036-controller-runtime-v024\n\ndeps: bump k8s v0.36, controller-runtime v0.24.1, gateway-api v1.6.0",
+          "timestamp": "2026-06-30T15:23:02Z",
+          "url": "https://github.com/jasonmadigan/mcp-gateway/commit/963b9dae2f0035e6bd3b356da9764b9f0900fdc0"
+        },
+        "date": 1782947991804,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "p95_tool_call_ms",
+            "value": 7,
+            "unit": "ms"
+          },
+          {
+            "name": "p99_tool_call_ms",
+            "value": 0,
+            "unit": "ms"
+          },
+          {
+            "name": "avg_tool_call_ms",
+            "value": 3.105723905723906,
             "unit": "ms"
           },
           {
