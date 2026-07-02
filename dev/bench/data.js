@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1782948255911,
+  "lastUpdate": 1782951281399,
   "repoUrl": "https://github.com/jasonmadigan/mcp-gateway",
   "entries": {
     "MCP Gateway Performance": [
@@ -365,6 +365,53 @@ window.BENCHMARK_DATA = {
           {
             "name": "avg_tool_call_ms",
             "value": 3.7835616438356166,
+            "unit": "ms"
+          },
+          {
+            "name": "tool_error_rate",
+            "value": 0,
+            "unit": "percent"
+          },
+          {
+            "name": "session_fail_rate",
+            "value": 0,
+            "unit": "percent"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Jason Madigan",
+            "username": "jasonmadigan",
+            "email": "jason@jasonmadigan.com"
+          },
+          "committer": {
+            "name": "Jason Madigan",
+            "username": "jasonmadigan",
+            "email": "jason@jasonmadigan.com"
+          },
+          "id": "11286b006fb41f90a5271f79d5f9641726072e30",
+          "message": "feat: migrate from mark3labs/mcp-go to official MCP Go SDK v1.7.0-pre\n\nReplace github.com/mark3labs/mcp-go with github.com/modelcontextprotocol/go-sdk\nacross broker, router, upstream client, session, test servers, and e2e helpers.\n\nKey changes:\n- server.MCPServer -> mcp.Server with middleware instead of hooks\n- server.ServerTool/ServerPrompt -> upstream.GatewayTool/GatewayPrompt\n- client.Client -> mcp.Client + mcp.ClientSession (two-step connect)\n- SessionIdManager -> ServerOptions.GetSessionID\n- Meta.AdditionalFields -> Meta (map[string]any directly)\n- ListToolsResult.Tools []Tool -> []*Tool (pointer slices)\n- Hooks (BeforeAny, AfterListTools, etc.) -> mcp.Middleware\n- Session lifecycle: InitializedHandler + session.Wait() goroutine\n- Tool builder API (NewTool, WithDescription) -> struct literals\n\nSession reuse for userSpecificList servers is deferred -- the official\nSDK does not expose transport.WithSession. Test skipped with TODO.\n\nResolves: #1111\nSigned-off-by: Jason Madigan <jason@jasonmadigan.com>",
+          "timestamp": "2026-06-30T15:33:07Z",
+          "url": "https://github.com/jasonmadigan/mcp-gateway/commit/11286b006fb41f90a5271f79d5f9641726072e30"
+        },
+        "date": 1782951280869,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "p95_tool_call_ms",
+            "value": 9,
+            "unit": "ms"
+          },
+          {
+            "name": "p99_tool_call_ms",
+            "value": 0,
+            "unit": "ms"
+          },
+          {
+            "name": "avg_tool_call_ms",
+            "value": 3.5806666666666667,
             "unit": "ms"
           },
           {
