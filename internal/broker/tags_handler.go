@@ -6,7 +6,7 @@ import (
 
 	"github.com/Kuadrant/mcp-gateway/internal/broker/upstream"
 	"github.com/Kuadrant/mcp-gateway/internal/config"
-	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 const (
@@ -15,44 +15,55 @@ const (
 )
 
 func (m *mcpBrokerImpl) registerTagsTools() {
-	listTags := mcp.NewTool(listTagsName,
-		mcp.WithDescription("List all tags across registered MCP servers"),
-	)
-	listTags.Meta = mcp.NewMetaFromMap(map[string]any{
+	listTags := mcp.Tool{
+		Name:        listTagsName,
+		Description: "List all tags across registered MCP servers",
+		InputSchema: map[string]any{"type": "object"},
+	}
+	listTags.Meta = mcp.Meta{
 		brokerToolMetaKey: true,
 		"kuadrant/id":     brokerServerID,
-	})
+	}
 
-	filterByTags := mcp.NewTool(filterToolsByTagsName,
-		mcp.WithDescription("Return tools available through the gateway that match all of the given tags"),
-		mcp.WithArray("tags",
-			mcp.Description("list of tags to filter by (must not be empty)"),
-			mcp.Required(),
-		),
-	)
-	filterByTags.Meta = mcp.NewMetaFromMap(map[string]any{
-		brokerToolMetaKey: true,
-		"kuadrant/id":     brokerServerID,
-	})
-
-	m.listeningMCPServer.AddTool(
-		listTags,
-		func(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-			return m.handleListTags(req)
+	filterByTags := mcp.Tool{
+		Name:        filterToolsByTagsName,
+		Description: "Return tools available through the gateway that match all of the given tags",
+		InputSchema: map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"tags": map[string]any{
+					"type":        "array",
+					"description": "list of tags to filter by (must not be empty)",
+					"items":       map[string]any{"type": "string"},
+				},
+			},
+			"required": []string{"tags"},
 		},
-	)
+	}
+	filterByTags.Meta = mcp.Meta{
+		brokerToolMetaKey: true,
+		"kuadrant/id":     brokerServerID,
+	}
 
-	m.listeningMCPServer.AddTool(
-		filterByTags,
-		func(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-			return m.handleFilterToolsByTags(req)
+	m.gatewayServer.AddTools(
+		upstream.GatewayTool{
+			Tool: listTags,
+			Handler: func(_ context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+				return m.handleListTags(req)
+			},
+		},
+		upstream.GatewayTool{
+			Tool: filterByTags,
+			Handler: func(_ context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+				return m.handleFilterToolsByTags(req)
+			},
 		},
 	)
 }
 
-func (m *mcpBrokerImpl) handleListTags(req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+func (m *mcpBrokerImpl) handleListTags(req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	m.mcpLock.RLock()
-	visible := m.getVisibleToolNames(req.Header)
+	visible := m.getVisibleToolNames(headersFromRequest(req))
 	seen := make(map[string]struct{})
 	for _, mgr := range m.mcpServers {
 		cfg := mgr.Config()
@@ -74,30 +85,33 @@ func (m *mcpBrokerImpl) handleListTags(req mcp.CallToolRequest) (*mcp.CallToolRe
 	return m.marshalToolResult(tags), nil
 }
 
-func (m *mcpBrokerImpl) handleFilterToolsByTags(req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	args := req.GetArguments()
+func (m *mcpBrokerImpl) handleFilterToolsByTags(req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	args, err := unmarshalArguments(req)
+	if err != nil {
+		return newToolResultError("invalid arguments"), nil //nolint:nilerr // mcp tool errors go in result
+	}
 	rawTags, ok := args["tags"]
 	if !ok {
-		return mcp.NewToolResultError("missing required parameter: tags"), nil
+		return newToolResultError("missing required parameter: tags"), nil
 	}
 
 	rawSlice, ok := rawTags.([]any)
 	if !ok {
-		return mcp.NewToolResultError("tags must be an array"), nil
+		return newToolResultError("tags must be an array"), nil
 	}
 
 	if len(rawSlice) == 0 {
-		return mcp.NewToolResultError("tags must not be empty"), nil
+		return newToolResultError("tags must not be empty"), nil
 	}
 
 	filterTags := make([]string, 0, len(rawSlice))
 	for _, v := range rawSlice {
 		s, ok := v.(string)
 		if !ok {
-			return mcp.NewToolResultError("tags must be an array of strings"), nil
+			return newToolResultError("tags must be an array of strings"), nil
 		}
 		if s == "" {
-			return mcp.NewToolResultError("tags must not contain empty strings"), nil
+			return newToolResultError("tags must not contain empty strings"), nil
 		}
 		filterTags = append(filterTags, s)
 	}
@@ -108,7 +122,7 @@ func (m *mcpBrokerImpl) handleFilterToolsByTags(req mcp.CallToolRequest) (*mcp.C
 		server upstream.ActiveMCPServer
 	}
 	m.mcpLock.RLock()
-	visible := m.getVisibleToolNames(req.Header)
+	visible := m.getVisibleToolNames(headersFromRequest(req))
 	refs := make([]serverRef, 0, len(m.mcpServers))
 	for _, mgr := range m.mcpServers {
 		cfg := mgr.Config()
@@ -155,7 +169,7 @@ func (m *mcpBrokerImpl) syncTagsTools(ctx context.Context, servers []*config.MCP
 		m.tagsToolsRegistered.Store(true)
 	} else if !hasTags && m.tagsToolsRegistered.Load() {
 		m.logger.InfoContext(ctx, "deregistering tags tools")
-		m.listeningMCPServer.DeleteTools(listTagsName, filterToolsByTagsName)
+		m.gatewayServer.DeleteTools(listTagsName, filterToolsByTagsName)
 		m.tagsToolsRegistered.Store(false)
 	}
 }

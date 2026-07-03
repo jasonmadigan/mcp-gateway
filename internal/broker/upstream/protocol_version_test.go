@@ -9,9 +9,12 @@ import (
 
 	mcpv1alpha1 "github.com/Kuadrant/mcp-gateway/api/v1alpha1"
 	"github.com/Kuadrant/mcp-gateway/internal/config"
-	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/stretchr/testify/require"
 )
+
+// hardcoded because the SDK does not export its supported version list;
+// drift on SDK bumps is caught by TestExpectedVersionMatchesSDKProposal.
+var testProtocolVersions = []string{"2024-11-05", "2025-03-26", "2025-06-18", "2025-11-25", "2026-07-28"}
 
 // pinnedVersionServer returns an httptest server that speaks just enough raw
 // JSON-RPC to complete an MCP initialize handshake, always replying with the
@@ -34,7 +37,7 @@ func pinnedVersionServer(t *testing.T, version string) *httptest.Server {
 		w.Header().Set("Content-Type", "application/json")
 		switch req.Method {
 		case "initialize":
-			w.Header().Set("mcp-session-id", "test-session")
+			w.Header().Set("Mcp-Session-Id", "test-session")
 			w.WriteHeader(http.StatusOK)
 			_, _ = fmt.Fprintf(w, `{"jsonrpc":"2.0","id":%d,"result":{"protocolVersion":%q,"capabilities":{"tools":{"listChanged":true}},"serverInfo":{"name":"pinned","version":"1.0.0"}}}`, req.ID, version)
 		case "notifications/initialized":
@@ -58,11 +61,10 @@ func connectTo(t *testing.T, url string) (*MCPServer, error) {
 }
 
 // TestConnect_NegotiatesValidProtocolVersions asserts the broker accepts an
-// upstream pinned to any version in mcp.ValidProtocolVersions and records the
-// negotiated version. The matrix is driven by the library's own list, so it
-// stays current as new MCP versions are added upstream.
+// upstream pinned to any version in the known valid protocol versions and
+// records the negotiated version.
 func TestConnect_NegotiatesValidProtocolVersions(t *testing.T) {
-	for _, version := range mcp.ValidProtocolVersions {
+	for _, version := range testProtocolVersions {
 		t.Run(version, func(t *testing.T) {
 			srv := pinnedVersionServer(t, version)
 			t.Cleanup(srv.Close)
@@ -80,7 +82,7 @@ func TestConnect_NegotiatesValidProtocolVersions(t *testing.T) {
 }
 
 // TestConnect_RejectsUnsupportedProtocolVersion asserts an upstream replying
-// with a version outside mcp.ValidProtocolVersions is rejected at connect time,
+// with a version outside the valid protocol versions is rejected at connect time,
 // mirroring the broken-server e2e negative case at the unit level.
 func TestConnect_RejectsUnsupportedProtocolVersion(t *testing.T) {
 	srv := pinnedVersionServer(t, "2021-11-05")
@@ -92,4 +94,38 @@ func TestConnect_RejectsUnsupportedProtocolVersion(t *testing.T) {
 	}
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "unsupported protocol version")
+}
+
+// TestExpectedVersionMatchesSDKProposal pins expectedProtocolVersion to what
+// the SDK client actually proposes during initialize, so an SDK bump that
+// changes the proposal fails here instead of silently drifting the status.
+func TestExpectedVersionMatchesSDKProposal(t *testing.T) {
+	proposed := make(chan string, 1)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			ID     int    `json:"id"`
+			Method string `json:"method"`
+			Params struct {
+				ProtocolVersion string `json:"protocolVersion"`
+			} `json:"params"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		w.Header().Set("Content-Type", "application/json")
+		if req.Method == "initialize" {
+			select {
+			case proposed <- req.Params.ProtocolVersion:
+			default:
+			}
+			w.Header().Set("Mcp-Session-Id", "test-session")
+			_, _ = fmt.Fprintf(w, `{"jsonrpc":"2.0","id":%d,"result":{"protocolVersion":%q,"capabilities":{},"serverInfo":{"name":"pinned","version":"1.0.0"}}}`, req.ID, expectedProtocolVersion)
+			return
+		}
+		_, _ = fmt.Fprintf(w, `{"jsonrpc":"2.0","id":%d,"result":{}}`, req.ID)
+	}))
+	t.Cleanup(srv.Close)
+
+	up, err := connectTo(t, srv.URL+"/mcp")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = up.Disconnect() })
+	require.Equal(t, expectedProtocolVersion, <-proposed)
 }

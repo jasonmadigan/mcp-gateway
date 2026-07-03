@@ -9,7 +9,7 @@ import (
 	mcpv1alpha1 "github.com/Kuadrant/mcp-gateway/api/v1alpha1"
 	"github.com/Kuadrant/mcp-gateway/internal/broker/upstream"
 	"github.com/Kuadrant/mcp-gateway/internal/config"
-	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 func createPromptTestManager(t *testing.T, serverName, prefix string, prompts []mcp.Prompt) *upstream.MCPManager {
@@ -34,7 +34,7 @@ func TestFilterPrompts(t *testing.T) {
 	}{
 		{
 			Name: "returns all prompts when no headers and enforce is false",
-			FullPromptList: &mcp.ListPromptsResult{Prompts: []mcp.Prompt{
+			FullPromptList: &mcp.ListPromptsResult{Prompts: []*mcp.Prompt{
 				{Name: "test_prompt1"},
 				{Name: "test_prompt2"},
 			}},
@@ -44,7 +44,7 @@ func TestFilterPrompts(t *testing.T) {
 		},
 		{
 			Name: "returns empty prompts when no headers and enforce is true",
-			FullPromptList: &mcp.ListPromptsResult{Prompts: []mcp.Prompt{
+			FullPromptList: &mcp.ListPromptsResult{Prompts: []*mcp.Prompt{
 				{Name: "test_prompt1"},
 			}},
 			RegisteredMCPServers: map[config.UpstreamMCPID]upstream.ActiveMCPServer{},
@@ -69,8 +69,7 @@ func TestFilterPrompts(t *testing.T) {
 				mcpServers:              tc.RegisteredMCPServers,
 			}
 
-			request := &mcp.ListPromptsRequest{Header: http.Header{}}
-			mcpBroker.FilterPrompts(context.TODO(), 1, request, tc.FullPromptList)
+			mcpBroker.FilterPrompts(context.TODO(), http.Header{}, tc.FullPromptList)
 
 			if len(tc.ExpectedPrompts) != len(tc.FullPromptList.Prompts) {
 				t.Fatalf("expected %d prompts but got %d: %v", len(tc.ExpectedPrompts), len(tc.FullPromptList.Prompts), tc.FullPromptList.Prompts)
@@ -97,17 +96,15 @@ func TestFilterPrompts_JWTFiltering(t *testing.T) {
 		},
 	}
 
-	result := &mcp.ListPromptsResult{Prompts: []mcp.Prompt{
+	result := &mcp.ListPromptsResult{Prompts: []*mcp.Prompt{
 		{Name: "test_prompt1"},
 		{Name: "test_prompt2"},
 	}}
-	request := &mcp.ListPromptsRequest{
-		Header: http.Header{
-			authorizedCapabilitiesHeader: {jwt},
-		},
+	headers := http.Header{
+		authorizedCapabilitiesHeader: {jwt},
 	}
 
-	mcpBroker.FilterPrompts(context.TODO(), 1, request, result)
+	mcpBroker.FilterPrompts(context.TODO(), headers, result)
 
 	if len(result.Prompts) != 1 {
 		t.Fatalf("expected 1 prompt but got %d: %v", len(result.Prompts), result.Prompts)
@@ -135,16 +132,14 @@ func TestFilterPrompts_ToolsOnlyJWTReturnsAllPrompts(t *testing.T) {
 		},
 	}
 
-	result := &mcp.ListPromptsResult{Prompts: []mcp.Prompt{
+	result := &mcp.ListPromptsResult{Prompts: []*mcp.Prompt{
 		{Name: "test_prompt1"},
 	}}
-	request := &mcp.ListPromptsRequest{
-		Header: http.Header{
-			authorizedCapabilitiesHeader: {jwt},
-		},
+	headers := http.Header{
+		authorizedCapabilitiesHeader: {jwt},
 	}
 
-	mcpBroker.FilterPrompts(context.TODO(), 1, request, result)
+	mcpBroker.FilterPrompts(context.TODO(), headers, result)
 
 	if len(result.Prompts) != 1 {
 		t.Fatalf("expected 1 prompt but got %d", len(result.Prompts))
@@ -161,7 +156,7 @@ func TestVirtualServerPromptFiltering(t *testing.T) {
 	}{
 		{
 			Name: "filters prompts to virtual server subset",
-			InputPrompts: &mcp.ListPromptsResult{Prompts: []mcp.Prompt{
+			InputPrompts: &mcp.ListPromptsResult{Prompts: []*mcp.Prompt{
 				{Name: "prompt1"},
 				{Name: "prompt2"},
 				{Name: "prompt3"},
@@ -177,7 +172,7 @@ func TestVirtualServerPromptFiltering(t *testing.T) {
 		},
 		{
 			Name: "returns all prompts when virtual server has empty prompts list",
-			InputPrompts: &mcp.ListPromptsResult{Prompts: []mcp.Prompt{
+			InputPrompts: &mcp.ListPromptsResult{Prompts: []*mcp.Prompt{
 				{Name: "prompt1"},
 				{Name: "prompt2"},
 			}},
@@ -193,7 +188,7 @@ func TestVirtualServerPromptFiltering(t *testing.T) {
 		},
 		{
 			Name: "returns all prompts when no virtual server header",
-			InputPrompts: &mcp.ListPromptsResult{Prompts: []mcp.Prompt{
+			InputPrompts: &mcp.ListPromptsResult{Prompts: []*mcp.Prompt{
 				{Name: "prompt1"},
 			}},
 			VirtualServers:  map[string]*config.VirtualServer{},
@@ -210,12 +205,12 @@ func TestVirtualServerPromptFiltering(t *testing.T) {
 				logger:                  slog.Default(),
 			}
 
-			request := &mcp.ListPromptsRequest{Header: http.Header{}}
+			headers := http.Header{}
 			if tc.VirtualServerID != "" {
-				request.Header[virtualMCPHeader] = []string{tc.VirtualServerID}
+				headers[virtualMCPHeader] = []string{tc.VirtualServerID}
 			}
 
-			mcpBroker.FilterPrompts(context.TODO(), 1, request, tc.InputPrompts)
+			mcpBroker.FilterPrompts(context.TODO(), headers, tc.InputPrompts)
 
 			resultPrompts := tc.InputPrompts.Prompts
 			if len(tc.ExpectedPrompts) != len(resultPrompts) {

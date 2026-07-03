@@ -14,8 +14,7 @@ import (
 	"github.com/Kuadrant/mcp-gateway/internal/session"
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	eppb "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
-	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/mark3labs/mcp-go/server"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/stretchr/testify/require"
 )
 
@@ -743,7 +742,7 @@ func (m *mockBrokerImpl) HandleStatusRequest(_ http.ResponseWriter, _ *http.Requ
 }
 
 // MCPServer implements broker.MCPBroker.
-func (m *mockBrokerImpl) MCPServer() *server.MCPServer {
+func (m *mockBrokerImpl) MCPServer() *mcp.Server {
 	panic("unimplemented")
 }
 
@@ -763,8 +762,8 @@ func (m *mockBrokerImpl) Shutdown(_ context.Context) error {
 }
 
 // ToolAnnotations implements broker.MCPBroker.
-func (m *mockBrokerImpl) ToolAnnotations(_ config.UpstreamMCPID, _ string) (mcp.ToolAnnotation, bool) {
-	return mcp.ToolAnnotation{}, false
+func (m *mockBrokerImpl) ToolAnnotations(_ config.UpstreamMCPID, _ string) (upstream.ToolHints, bool) {
+	return upstream.ToolHints{}, false
 }
 
 // ValidateAllServers implements broker.MCPBroker.
@@ -775,6 +774,11 @@ func (m *mockBrokerImpl) ValidateAllServers() broker.StatusResponse {
 // IsBrokerToolName implements broker.MCPBroker.
 func (m *mockBrokerImpl) IsBrokerToolName(_ string) bool {
 	return false
+}
+
+// MCPHandler implements broker.MCPBroker.
+func (m *mockBrokerImpl) MCPHandler() http.Handler {
+	panic("unimplemented")
 }
 
 // IsReady implements broker.MCPBroker.

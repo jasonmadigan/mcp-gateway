@@ -17,6 +17,7 @@ import (
 
 	mcpv1alpha1 "github.com/Kuadrant/mcp-gateway/api/v1alpha1"
 	"github.com/Kuadrant/mcp-gateway/internal/config"
+	"github.com/Kuadrant/mcp-gateway/internal/transport"
 	"github.com/stretchr/testify/require"
 )
 
@@ -149,8 +150,13 @@ func TestBuildHTTPClient_NoCACert(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, client, "should always return a client with timeouts set")
 
-	tr, ok := client.Transport.(*http.Transport)
-	require.True(t, ok, "transport should be *http.Transport")
+	// unwrap the hints tee and header round tripper to reach the base transport
+	tee, ok := client.Transport.(*toolHintsTee)
+	require.True(t, ok, "transport should be *toolHintsTee")
+	hrt, ok := tee.base.(*transport.HeaderRoundTripper)
+	require.True(t, ok, "tee base should be *transport.HeaderRoundTripper")
+	tr, ok := hrt.Base.(*http.Transport)
+	require.True(t, ok, "base should be *http.Transport")
 	require.Equal(t, defaultTLSHandshakeTimeout, tr.TLSHandshakeTimeout)
 	require.Equal(t, defaultResponseHeaderTimeout, tr.ResponseHeaderTimeout)
 }

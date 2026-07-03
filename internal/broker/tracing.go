@@ -3,10 +3,10 @@ package broker
 import (
 	"context"
 	"fmt"
-	"sync"
 
+	internaljwt "github.com/Kuadrant/mcp-gateway/internal/jwt"
 	mcpotel "github.com/Kuadrant/mcp-gateway/internal/otel"
-	"github.com/mark3labs/mcp-go/server"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -20,42 +20,35 @@ func brokerTracer() trace.Tracer {
 	return otel.Tracer(brokerTracerName)
 }
 
-type requestSpanTracker struct {
-	mu    sync.Mutex
-	spans map[any]trace.Span
-}
+// tracingMiddleware wraps each request in a span (replaces mark3labs'
+// BeforeAny/OnSuccess/OnError hooks).
+func (m *mcpBrokerImpl) tracingMiddleware() mcp.Middleware {
+	return func(next mcp.MethodHandler) mcp.MethodHandler {
+		return func(ctx context.Context, method string, req mcp.Request) (mcp.Result, error) {
+			ctx, span := brokerTracer().Start(ctx, "mcp-broker.handle-request", trace.WithAttributes(
+				brokerComponentAttr,
+				attribute.String("mcp.method", method),
+			))
+			defer span.End()
+			// LogSafeSessionID hashes/decodes per call; only pay for it when
+			// the span is sampled
+			if span.IsRecording() {
+				if sess := req.GetSession(); sess != nil {
+					if sid := sess.ID(); sid != "" {
+						span.SetAttributes(attribute.String("mcp.session.id", internaljwt.LogSafeSessionID(sid)))
+					}
+				}
+			}
+			m.logger.DebugContext(ctx, "processing request", "method", method)
 
-func newRequestSpanTracker() *requestSpanTracker {
-	return &requestSpanTracker{spans: make(map[any]trace.Span)}
-}
-
-func (t *requestSpanTracker) start(ctx context.Context, id any, spanName string, attrs ...attribute.KeyValue) (context.Context, trace.Span) {
-	opts := []trace.SpanStartOption{}
-	if len(attrs) > 0 {
-		opts = append(opts, trace.WithAttributes(attrs...))
+			result, err := next(ctx, method, req)
+			if err != nil {
+				m.logger.ErrorContext(ctx, "mcp server error", "method", method, "error", err)
+				recordBrokerError(span, err)
+			}
+			return result, err
+		}
 	}
-	ctx, span := brokerTracer().Start(ctx, spanName, opts...) //nolint:spancheck // span ended by requestSpanTracker.remove caller
-	t.mu.Lock()
-	t.spans[id] = span
-	t.mu.Unlock()
-	return ctx, span //nolint:spancheck // span ended by requestSpanTracker.remove caller
-}
-
-func (t *requestSpanTracker) remove(id any) (trace.Span, bool) {
-	t.mu.Lock()
-	span, ok := t.spans[id]
-	if ok {
-		delete(t.spans, id)
-	}
-	t.mu.Unlock()
-	return span, ok
-}
-
-func sessionIDFromContext(ctx context.Context) string {
-	if session := server.ClientSessionFromContext(ctx); session != nil {
-		return session.SessionID()
-	}
-	return ""
 }
 
 func recordBrokerError(span trace.Span, err error) {
