@@ -184,11 +184,15 @@ func (r *MCPGatewayExtensionReconciler) ensureFinalizer(ctx context.Context, mcp
 }
 
 func (r *MCPGatewayExtensionReconciler) reconcileActive(ctx context.Context, mcpExt *mcpv1.MCPGatewayExtension) (ctrl.Result, error) {
+	// snapshot status before reconcile mutates it (e.g. MCPEndpoint), so updateStatus
+	// can tell whether a write is needed.
+	originalStatus := mcpExt.Status.DeepCopy()
+
 	// check for namespace conflict first - only one MCPGatewayExtension per namespace
 	if err := r.checkNamespaceConflict(ctx, mcpExt); err != nil {
 		var valErr *validationError
 		if errors.As(err, &valErr) {
-			return ctrl.Result{}, r.updateStatus(ctx, mcpExt, metav1.ConditionFalse, valErr.reason, valErr.message)
+			return ctrl.Result{}, r.updateStatus(ctx, mcpExt, originalStatus, metav1.ConditionFalse, valErr.reason, valErr.message)
 		}
 		return ctrl.Result{}, err
 	}
@@ -197,7 +201,7 @@ func (r *MCPGatewayExtensionReconciler) reconcileActive(ctx context.Context, mcp
 	if err != nil {
 		var valErr *validationError
 		if errors.As(err, &valErr) {
-			return ctrl.Result{}, r.updateStatus(ctx, mcpExt, metav1.ConditionFalse, valErr.reason, valErr.message)
+			return ctrl.Result{}, r.updateStatus(ctx, mcpExt, originalStatus, metav1.ConditionFalse, valErr.reason, valErr.message)
 		}
 		return ctrl.Result{}, err
 	}
@@ -205,7 +209,7 @@ func (r *MCPGatewayExtensionReconciler) reconcileActive(ctx context.Context, mcp
 	if err := r.checkListenerConflict(ctx, mcpExt, targetGateway, listenerConfig); err != nil {
 		var valErr *validationError
 		if errors.As(err, &valErr) {
-			return ctrl.Result{}, r.updateStatus(ctx, mcpExt, metav1.ConditionFalse, valErr.reason, valErr.message)
+			return ctrl.Result{}, r.updateStatus(ctx, mcpExt, originalStatus, metav1.ConditionFalse, valErr.reason, valErr.message)
 		}
 		return ctrl.Result{}, err
 	}
@@ -217,7 +221,7 @@ func (r *MCPGatewayExtensionReconciler) reconcileActive(ctx context.Context, mcp
 	if err := r.reconcileTrustedHeaders(ctx, mcpExt); err != nil {
 		var valErr *validationError
 		if errors.As(err, &valErr) {
-			return ctrl.Result{}, r.updateStatus(ctx, mcpExt, metav1.ConditionFalse, valErr.reason, valErr.message)
+			return ctrl.Result{}, r.updateStatus(ctx, mcpExt, originalStatus, metav1.ConditionFalse, valErr.reason, valErr.message)
 		}
 		return ctrl.Result{}, err
 	}
@@ -225,7 +229,7 @@ func (r *MCPGatewayExtensionReconciler) reconcileActive(ctx context.Context, mcp
 	if err := r.reconcileSessionSigningKey(ctx, mcpExt); err != nil {
 		var valErr *validationError
 		if errors.As(err, &valErr) {
-			return ctrl.Result{}, r.updateStatus(ctx, mcpExt, metav1.ConditionFalse, valErr.reason, valErr.message)
+			return ctrl.Result{}, r.updateStatus(ctx, mcpExt, originalStatus, metav1.ConditionFalse, valErr.reason, valErr.message)
 		}
 		return ctrl.Result{}, err
 	}
@@ -233,7 +237,7 @@ func (r *MCPGatewayExtensionReconciler) reconcileActive(ctx context.Context, mcp
 	if err := r.validateSessionStore(ctx, mcpExt); err != nil {
 		var valErr *validationError
 		if errors.As(err, &valErr) {
-			return ctrl.Result{}, r.updateStatus(ctx, mcpExt, metav1.ConditionFalse, valErr.reason, valErr.message)
+			return ctrl.Result{}, r.updateStatus(ctx, mcpExt, originalStatus, metav1.ConditionFalse, valErr.reason, valErr.message)
 		}
 		return ctrl.Result{}, err
 	}
@@ -241,7 +245,7 @@ func (r *MCPGatewayExtensionReconciler) reconcileActive(ctx context.Context, mcp
 	if err := r.reconcileCACertBundle(ctx, mcpExt); err != nil {
 		var valErr *validationError
 		if errors.As(err, &valErr) {
-			return ctrl.Result{}, r.updateStatus(ctx, mcpExt, metav1.ConditionFalse, valErr.reason, valErr.message)
+			return ctrl.Result{}, r.updateStatus(ctx, mcpExt, originalStatus, metav1.ConditionFalse, valErr.reason, valErr.message)
 		}
 		return ctrl.Result{}, err
 	}
@@ -250,13 +254,13 @@ func (r *MCPGatewayExtensionReconciler) reconcileActive(ctx context.Context, mcp
 	if err != nil {
 		var valErr *validationError
 		if errors.As(err, &valErr) {
-			return ctrl.Result{}, r.updateStatus(ctx, mcpExt, metav1.ConditionFalse, valErr.reason, valErr.message)
+			return ctrl.Result{}, r.updateStatus(ctx, mcpExt, originalStatus, metav1.ConditionFalse, valErr.reason, valErr.message)
 		}
 		return ctrl.Result{}, err
 	}
 
 	if !deploymentReady {
-		if err := r.updateStatus(ctx, mcpExt, metav1.ConditionFalse, mcpv1.ConditionReasonDeploymentNotReady, "broker-router deployment is not ready"); err != nil {
+		if err := r.updateStatus(ctx, mcpExt, originalStatus, metav1.ConditionFalse, mcpv1.ConditionReasonDeploymentNotReady, "broker-router deployment is not ready"); err != nil {
 			return ctrl.Result{}, err
 		}
 		// requeue to check deployment status again since Owns watch doesn't trigger on status-only changes
@@ -273,7 +277,7 @@ func (r *MCPGatewayExtensionReconciler) reconcileActive(ctx context.Context, mcp
 		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
 	}
 
-	return ctrl.Result{}, r.updateStatus(ctx, mcpExt, metav1.ConditionTrue, mcpv1.ConditionReasonSuccess, "successfully verified and configured")
+	return ctrl.Result{}, r.updateStatus(ctx, mcpExt, originalStatus, metav1.ConditionTrue, mcpv1.ConditionReasonSuccess, "successfully verified and configured")
 }
 
 func (r *MCPGatewayExtensionReconciler) validateGatewayTarget(ctx context.Context, mcpExt *mcpv1.MCPGatewayExtension) (*gatewayv1.Gateway, *ListenerConfig, error) {
@@ -480,17 +484,11 @@ func findOldestExtension(exts []mcpv1.MCPGatewayExtension) *mcpv1.MCPGatewayExte
 	return oldest
 }
 
-func (r *MCPGatewayExtensionReconciler) updateStatus(ctx context.Context, mcpExt *mcpv1.MCPGatewayExtension, status metav1.ConditionStatus, reason, message string) error {
-	existing := meta.FindStatusCondition(mcpExt.Status.Conditions, mcpv1.ConditionTypeReady)
-	var existingCopy metav1.Condition
-	if existing != nil {
-		existingCopy = *existing
-	}
-
+func (r *MCPGatewayExtensionReconciler) updateStatus(ctx context.Context, mcpExt *mcpv1.MCPGatewayExtension, original *mcpv1.MCPGatewayExtensionStatus, status metav1.ConditionStatus, reason, message string) error {
 	mcpExt.SetReadyCondition(status, reason, message)
-	updated := meta.FindStatusCondition(mcpExt.Status.Conditions, mcpv1.ConditionTypeReady)
-
-	if existing != nil && equality.Semantic.DeepEqual(existingCopy, *updated) {
+	// write when anything in status changed, not just the Ready condition:
+	// MCPEndpoint is set during reconcile and must be persisted too.
+	if original != nil && equality.Semantic.DeepEqual(*original, mcpExt.Status) {
 		return nil
 	}
 	return r.Status().Update(ctx, mcpExt)

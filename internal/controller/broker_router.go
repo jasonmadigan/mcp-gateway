@@ -5,9 +5,11 @@ import (
 	"fmt"
 	"net"
 	"slices"
+	"strconv"
 	"strings"
 
 	mcpv1 "github.com/Kuadrant/mcp-gateway/api/v1"
+	"github.com/Kuadrant/mcp-gateway/internal/cors"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
@@ -69,7 +71,27 @@ var managedEnvVarNames = []string{
 	"OAUTH_AUTHORIZATION_SERVERS",
 	"OAUTH_BEARER_METHODS_SUPPORTED",
 	"OAUTH_SCOPES_SUPPORTED",
+	cors.EnvAllowOrigins,
+	cors.EnvAllowMethods,
+	cors.EnvAllowHeaders,
+	cors.EnvExposeHeaders,
+	cors.EnvAllowCredentials,
+	cors.EnvMaxAge,
 }
+
+// corsTransportMethods are always allowed regardless of spec, because the MCP
+// Streamable HTTP transport needs them. DELETE covers session termination and
+// OPTIONS covers preflight.
+var corsTransportMethods = []string{"GET", "POST", "DELETE", "OPTIONS"}
+
+// corsTransportAllowHeaders are always accepted regardless of spec. Mcp-Session-Id
+// and MCP-Protocol-Version carry the transport; Last-Event-ID covers SSE resumption.
+var corsTransportAllowHeaders = []string{"Content-Type", "Authorization", "Accept", "Mcp-Session-Id", "MCP-Protocol-Version", "Last-Event-ID"}
+
+// corsTransportExposeHeaders are always exposed regardless of spec. Without
+// Mcp-Session-Id here JavaScript cannot read the session id off initialize and
+// every subsequent call fails.
+var corsTransportExposeHeaders = []string{"Mcp-Session-Id", "MCP-Protocol-Version", "WWW-Authenticate"}
 
 // logLevelFlagValues maps spec.logLevel to the numeric value expected by the
 // broker-router's --log-level flag, following Go's slog level convention
@@ -86,6 +108,54 @@ func brokerRouterLabels() map[string]string {
 		labelAppName:   brokerRouterName,
 		labelManagedBy: labelManagedByValue,
 	}
+}
+
+// corsStrings converts a slice of a ~string-typed gateway-api CORS field to plain strings.
+func corsStrings[T ~string](in []T) []string {
+	out := make([]string, len(in))
+	for i, v := range in {
+		out[i] = string(v)
+	}
+	return out
+}
+
+// unionCORS returns the always-included transport values followed by any spec
+// extras not already present. Comparison is case-insensitive, which is correct
+// for HTTP header names and harmless for the uppercase transport method set.
+func unionCORS(transport, extra []string) []string {
+	seen := make(map[string]struct{}, len(transport)+len(extra))
+	out := make([]string, 0, len(transport)+len(extra))
+	for _, v := range append(append([]string{}, transport...), extra...) {
+		k := strings.ToLower(v)
+		if _, ok := seen[k]; ok {
+			continue
+		}
+		seen[k] = struct{}{}
+		out = append(out, v)
+	}
+	return out
+}
+
+// corsEnvVars turns spec.cors into the CORS_* env vars the broker reads back,
+// unioning the user's lists with the headers and methods the MCP transport
+// always needs. allowOrigins is passed through verbatim (admission rejects empty).
+func corsEnvVars(c *gatewayv1.HTTPCORSFilter) []corev1.EnvVar {
+	// -1 disables client caching; only default to 5 when the field is unset (0).
+	maxAge := int32(5)
+	if c.MaxAge != 0 {
+		maxAge = c.MaxAge
+	}
+	env := []corev1.EnvVar{
+		{Name: cors.EnvAllowOrigins, Value: strings.Join(corsStrings(c.AllowOrigins), ",")},
+		{Name: cors.EnvAllowMethods, Value: strings.Join(unionCORS(corsTransportMethods, corsStrings(c.AllowMethods)), ",")},
+		{Name: cors.EnvAllowHeaders, Value: strings.Join(unionCORS(corsTransportAllowHeaders, corsStrings(c.AllowHeaders)), ",")},
+		{Name: cors.EnvExposeHeaders, Value: strings.Join(unionCORS(corsTransportExposeHeaders, corsStrings(c.ExposeHeaders)), ",")},
+		{Name: cors.EnvMaxAge, Value: strconv.Itoa(int(maxAge))},
+	}
+	if c.AllowCredentials != nil && *c.AllowCredentials {
+		env = append(env, corev1.EnvVar{Name: cors.EnvAllowCredentials, Value: "true"})
+	}
+	return env
 }
 
 func (r *MCPGatewayExtensionReconciler) buildBrokerRouterDeployment(mcpExt *mcpv1.MCPGatewayExtension, publicHost, internalHost string) *appsv1.Deployment {
@@ -174,6 +244,9 @@ func (r *MCPGatewayExtensionReconciler) buildBrokerRouterDeployment(mcpExt *mcpv
 			corev1.EnvVar{Name: "OAUTH_SCOPES_SUPPORTED", Value: strings.Join(scopes, ",")},
 		)
 	}
+	if c := mcpExt.Spec.CORS; c != nil {
+		envVars = append(envVars, corsEnvVars(c)...)
+	}
 
 	return &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
@@ -244,7 +317,7 @@ func (r *MCPGatewayExtensionReconciler) buildBrokerRouterDeployment(mcpExt *mcpv
 						{
 							Name: "config-volume",
 							VolumeSource: corev1.VolumeSource{
-								Secret: &corev1.SecretVolumeSource{
+								Secret: &corev1.SecretVolumeSource{ //nolint:gosec // not a credential
 									SecretName:  "mcp-gateway-config",
 									DefaultMode: ptr.To(int32(420)), // 0644 octal
 								},
@@ -363,6 +436,14 @@ func (r *MCPGatewayExtensionReconciler) reconcileBrokerRouter(ctx context.Contex
 		return false, newValidationError(mcpv1.ConditionReasonInvalid, err.Error())
 	}
 	internalHost := derivePrivateHost(mcpExt, listenerConfig, gatewayClassName)
+
+	// record the public endpoint browsers use to reach this gateway. scheme
+	// tracks the listener protocol so a browser hits the right port.
+	endpointScheme := "http"
+	if strings.EqualFold(listenerConfig.Protocol, "HTTPS") {
+		endpointScheme = "https"
+	}
+	mcpExt.Status.MCPEndpoint = fmt.Sprintf("%s://%s/mcp", endpointScheme, publicHost)
 
 	// reconcile service account (must exist before deployment)
 	serviceAccount := r.buildBrokerRouterServiceAccount(mcpExt)
