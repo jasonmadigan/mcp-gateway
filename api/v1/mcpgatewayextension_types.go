@@ -5,6 +5,7 @@ import (
 
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 )
 
 // HTTPRouteManagementPolicy defines how the operator manages the gateway HTTPRoute
@@ -137,6 +138,16 @@ type MCPGatewayExtensionSpec struct {
 	// The Secret must have the label mcp.kuadrant.io/secret=true.
 	// +optional
 	CACertBundleRef *CACertBundleReference `json:"caCertBundleRef,omitempty"`
+
+	// cors configures Cross-Origin Resource Sharing, allowing browser-based MCP
+	// clients (such as the console) to call this gateway. Headers required by the
+	// MCP Streamable HTTP transport are always included, whether listed here or
+	// not. allowOrigins is required: an empty list is rejected at admission.
+	// When unset, cross-origin requests are refused.
+	// +optional
+	// +kubebuilder:validation:XValidation:message="cors.allowOrigins must not be empty",rule="has(self.allowOrigins) && size(self.allowOrigins) > 0"
+	// +kubebuilder:validation:XValidation:message="cors.allowCredentials cannot be true when allowOrigins contains a wildcard '*'",rule="!(has(self.allowCredentials) && self.allowCredentials && has(self.allowOrigins) && self.allowOrigins.exists(o, o.contains('*')))"
+	CORS *gatewayv1.HTTPCORSFilter `json:"cors,omitempty"`
 }
 
 // OAuthProtectedResource configures the OAuth protected resource metadata
@@ -235,6 +246,12 @@ type MCPGatewayExtensionStatus struct {
 	// +patchMergeKey=type
 	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type" protobuf:"bytes,1,rep,name=conditions"`
+
+	// mcpEndpoint is the resolved public URL clients use to reach this MCP
+	// gateway, for example https://mcp.example.com/mcp. Set once the public host
+	// is derived during reconcile.
+	// +optional
+	MCPEndpoint string `json:"mcpEndpoint,omitempty"`
 }
 
 // +kubebuilder:object:root=true
