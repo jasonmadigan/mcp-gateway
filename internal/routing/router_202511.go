@@ -393,7 +393,7 @@ func (r *Router202511) routeToUpstream(ctx context.Context, span trace.Span, mcp
 		Authority:    serverInfo.Hostname,
 		Path:         path,
 		SetHeaders:   headers,
-		UnsetHeaders: InternalOnlyHeaders,
+		UnsetHeaders: UpstreamStripHeaders,
 		BodyMutation: body,
 	}
 }
@@ -461,7 +461,7 @@ func (r *Router202511) routeElicitationResponse(ctx context.Context, mcpReq *MCP
 			MCPServerNameHeader: entry.ServerName,
 			"content-length":    fmt.Sprintf("%d", len(body)),
 		},
-		UnsetHeaders: InternalOnlyHeaders,
+		UnsetHeaders: UpstreamStripHeaders,
 		BodyMutation: body,
 	}
 }
@@ -498,7 +498,7 @@ func (r *Router202511) routeBrokerPassthrough(ctx context.Context, mcpReq *MCPRe
 			return &Decision{
 				Authority:    remoteInitializeTarget,
 				SetHeaders:   headers,
-				UnsetHeaders: append([]string{"mcp-init-host", RoutingKey}, InternalOnlyHeaders...),
+				UnsetHeaders: append([]string{"mcp-init-host", RoutingKey}, UpstreamStripHeaders...),
 			}
 		}
 	}
@@ -561,7 +561,15 @@ func (r *Router202511) initializeMCPServerSession(ctx context.Context, mcpReq *M
 				k == "mcp-init-host" ||
 				k == RoutingKey ||
 				k == MCPAuthorizedHeader ||
-				k == MCPVirtualServerHeader {
+				k == MCPVirtualServerHeader ||
+				// browser->gateway hop-scoped headers. the MCP transport requires
+				// upstreams to validate Origin against Host (dns-rebinding guard),
+				// so forwarding a browser's Origin/Sec-Fetch-* makes every
+				// browser-originated call fail upstream with a 403.
+				k == "origin" ||
+				k == "referer" ||
+				k == "cookie" ||
+				strings.HasPrefix(k, "sec-fetch-") {
 				continue
 			}
 			passThroughHeaders[key] = val

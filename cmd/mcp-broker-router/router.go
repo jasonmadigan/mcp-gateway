@@ -2,6 +2,7 @@ package main
 
 import (
 	"github.com/Kuadrant/mcp-gateway/internal/clients"
+	"github.com/Kuadrant/mcp-gateway/internal/cors"
 	mcpRouter "github.com/Kuadrant/mcp-gateway/internal/mcp-router"
 	"github.com/Kuadrant/mcp-gateway/internal/routing"
 	extProcV3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
@@ -53,6 +54,8 @@ func (a *app) createRouter() {
 		ElicitationEnabled: cfg.enableURLElicitation,
 		Logger:             a.logger.With("component", "response-handler-202511"),
 	}
+
+	a.server.CORS = cors.FromEnv()
 
 	extProcV3.RegisterExternalProcessorServer(a.grpcServer, a.server)
 }

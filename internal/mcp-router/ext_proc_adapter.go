@@ -11,6 +11,7 @@ import (
 	"sync/atomic"
 
 	"github.com/Kuadrant/mcp-gateway/internal/config"
+	"github.com/Kuadrant/mcp-gateway/internal/cors"
 	"github.com/Kuadrant/mcp-gateway/internal/idmap"
 	internaljwt "github.com/Kuadrant/mcp-gateway/internal/jwt"
 	"github.com/Kuadrant/mcp-gateway/internal/protocol"
@@ -36,6 +37,10 @@ type ExtProcServer struct {
 	ResponseHandler     routing.ResponseHandler
 	Router202607        routing.Router
 	ResponseHandler2026 routing.ResponseHandler
+	// CORS echoes Access-Control-* onto upstream-routed responses, which bypass
+	// the broker's inbound CORS middleware because ext_proc routes them straight
+	// to the upstream. nil disables it (no allowlist configured).
+	CORS *cors.Policy
 }
 
 // OnConfigChange is used to register the router for config changes
@@ -133,6 +138,31 @@ func responseDecisionToResponse(d *routing.ResponseDecision) []*extProcV3.Proces
 	}
 
 	return responses
+}
+
+// echoCORS mirrors the allowlisted request origin onto an upstream-routed
+// response decision. a wildcard origin match never carries credentials: the
+// CORS spec forbids pairing them and browsers reject the response. a nil policy,
+// empty origin, or disallowed origin is a no-op.
+func (s *ExtProcServer) echoCORS(dec *routing.ResponseDecision, origin string) {
+	if !s.CORS.Enabled() || origin == "" {
+		return
+	}
+	matched, wildcard := s.CORS.AllowsWildcard(origin)
+	if !matched {
+		return
+	}
+	if dec.SetHeaders == nil {
+		dec.SetHeaders = map[string]string{}
+	}
+	dec.SetHeaders["access-control-allow-origin"] = origin
+	dec.SetHeaders["vary"] = "Origin"
+	if s.CORS.ExposeHeaders != "" {
+		dec.SetHeaders["access-control-expose-headers"] = s.CORS.ExposeHeaders
+	}
+	if s.CORS.AllowCredentials && !wildcard {
+		dec.SetHeaders["access-control-allow-credentials"] = "true"
+	}
 }
 
 // headerMapToMap converts an Envoy HeaderMap to a plain map for the portable routing layer.
@@ -427,6 +457,11 @@ func (s *ExtProcServer) Process(stream extProcV3.ExternalProcessor_ProcessServer
 			}
 
 			respDecision := respHandler.HandleResponse(ctx, respInput)
+
+			// upstream-routed responses bypass the broker's inbound CORS
+			// middleware, so echo the CORS headers here when the request origin
+			// is allowed. broker-served responses are handled by the middleware.
+			s.echoCORS(respDecision, getSingleValueHeader(localRequestHeaders.Headers, "origin"))
 
 			if mcpRequest != nil && mcpRequest.IsToolCall() {
 				authSub, _ := internaljwt.ExtractSubClaim(mcpRequest.Headers[routing.AuthorizationHeader])

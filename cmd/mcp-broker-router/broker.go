@@ -78,17 +78,16 @@ func (a *app) setUpHTTPServer() {
 	// SSE streams notifications indefinitely - any write timeout would kill the connection.
 	writeTimeout := time.Duration(cfg.writeTimeoutSecs) * time.Second
 
+	// cors middleware owns the origin allowlist and preflight for every route,
+	// including OPTIONS /mcp. disabled (no headers) when CORS_ALLOW_ORIGINS is unset.
+	corsMW := broker.NewCORSFromEnv()
+
 	httpSrv := &http.Server{
 		Addr:         cfg.addr,
-		Handler:      mux,
+		Handler:      corsMW.Wrap(mux),
 		ReadTimeout:  5 * time.Second,
 		WriteTimeout: writeTimeout,
 	}
-
-	mux.HandleFunc("OPTIONS /mcp", func(w http.ResponseWriter, r *http.Request) {
-		a.logger.Debug("Handling OPTIONS", "Mcp-Session-Id", r.Header.Get("Mcp-Session-Id"))
-		w.WriteHeader(http.StatusOK)
-	})
 
 	mux.HandleFunc("/status", a.mcpBroker.HandleStatusRequest)
 	mux.HandleFunc("/status/", a.mcpBroker.HandleStatusRequest)

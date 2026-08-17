@@ -481,9 +481,22 @@ func (broker *mcpBrokerImpl) fetchStatelessUserTools(ctx context.Context, server
 // upstream MCP servers. cookie and proxy-authorization are scoped to the
 // gateway origin/hop, not the upstream, so forwarding them would leak
 // gateway-scoped credentials to every user-specific upstream queried.
+//
+// origin, referer and the sec-fetch-* set are scoped to the browser->gateway
+// hop. the MCP Streamable HTTP transport requires servers to validate Origin
+// against Host as DNS-rebinding protection, so forwarding a browser's Origin
+// (which never matches the upstream host) makes every browser-originated tool
+// call fail upstream with a 403. strip them so the hairpin looks like a
+// non-browser client to the upstream, which is what it is.
 var sensitiveForwardHeaders = map[string]struct{}{
 	"cookie":              {},
 	"proxy-authorization": {},
+	"origin":              {},
+	"referer":             {},
+	"sec-fetch-site":      {},
+	"sec-fetch-mode":      {},
+	"sec-fetch-dest":      {},
+	"sec-fetch-user":      {},
 }
 
 // filterUserHeaders returns user headers suitable for forwarding to upstream,

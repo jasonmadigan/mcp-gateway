@@ -1,6 +1,7 @@
 package broker
 
 import (
+	"context"
 	"encoding/json"
 	"log/slog"
 	"net/http"
@@ -58,29 +59,21 @@ func TestProtectedResourceHandler_Handle(t *testing.T) {
 			expectedStatus: http.StatusOK,
 			checkBody:      true,
 		},
-		{
-			name:           "OPTIONS preflight request returns 200",
-			method:         http.MethodOptions,
-			expectedStatus: http.StatusOK,
-			checkBody:      false,
-		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			handler := &ProtectedResourceHandler{Logger: logger}
 
-			req := httptest.NewRequest(tc.method, "/.well-known/oauth-protected-resource", nil)
+			req := httptest.NewRequestWithContext(context.Background(), tc.method, "/.well-known/oauth-protected-resource", nil)
 			rec := httptest.NewRecorder()
 
 			handler.Handle(rec, req)
 
 			require.Equal(t, tc.expectedStatus, rec.Code)
 
-			// check CORS headers
-			require.Equal(t, "*", rec.Header().Get("Access-Control-Allow-Origin"))
-			require.Contains(t, rec.Header().Get("Access-Control-Allow-Methods"), "GET")
-			require.Contains(t, rec.Header().Get("Access-Control-Allow-Headers"), "Authorization")
+			// CORS headers are emitted by the broker CORS middleware, not this handler
+			require.Empty(t, rec.Header().Get("Access-Control-Allow-Origin"))
 
 			if tc.checkBody {
 				require.Equal(t, "application/json", rec.Header().Get("Content-Type"))

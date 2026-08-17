@@ -79,7 +79,21 @@ var MCPVerifiedSubHeader = sharedheaders.VerifiedSubHeader
 
 // InternalOnlyHeaders are headers used internally by the gateway for filtering
 // and routing that must be stripped before forwarding to upstream MCP servers.
+// This is the inbound (browser->broker) strip set; it deliberately excludes
+// Origin so the broker's CORS middleware can still read and echo it.
 var InternalOnlyHeaders = []string{MCPAuthorizedHeader, MCPVirtualServerHeader, MCPVerifiedSubHeader}
+
+// browserHopHeaders are scoped to the browser->gateway hop and must not reach
+// upstream MCP servers. The MCP Streamable HTTP transport requires upstreams to
+// validate Origin against Host as dns-rebinding protection, so a forwarded
+// browser Origin (which never matches the upstream host) makes every
+// browser-originated tool call fail upstream with a 403. These are stripped only
+// on the broker->upstream hop, not inbound, so CORS still works.
+var browserHopHeaders = []string{"origin", "referer", "cookie", "sec-fetch-site", "sec-fetch-mode", "sec-fetch-dest", "sec-fetch-user"}
+
+// UpstreamStripHeaders are removed when routing a request on to an upstream MCP
+// server: the internal gateway headers plus the browser hop-scoped headers.
+var UpstreamStripHeaders = append(append([]string{}, InternalOnlyHeaders...), browserHopHeaders...)
 
 // MCPRequest encapsulates a mcp protocol request to the gateway
 type MCPRequest struct {
