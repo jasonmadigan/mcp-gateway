@@ -81,7 +81,10 @@ var MCPVerifiedSubHeader = sharedheaders.VerifiedSubHeader
 // and routing that must be stripped before forwarding to upstream MCP servers.
 // This is the inbound (browser->broker) strip set; it deliberately excludes
 // Origin so the broker's CORS middleware can still read and echo it.
-var InternalOnlyHeaders = []string{MCPAuthorizedHeader, MCPVirtualServerHeader, MCPVerifiedSubHeader}
+// ResourceHeader is included because it is router-set (only in routeResourceRead
+// from the parsed body); stripping it inbound stops a client spoofing it before
+// authz.
+var InternalOnlyHeaders = []string{MCPAuthorizedHeader, MCPVirtualServerHeader, MCPVerifiedSubHeader, ResourceHeader}
 
 // browserHopHeaders are scoped to the browser->gateway hop and must not reach
 // upstream MCP servers. The MCP Streamable HTTP transport requires upstreams to
